@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
 const User = require("../models/User");
+const Job = require("../models/Job");
 const upload = require("../middleware/upload");
 const Joi = require("joi");
 const path = require("path");
@@ -185,10 +186,11 @@ router.post("/login", async (req, res) => {
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(400).json({ error: "Validation failed." });
 
-    // Return user info
+    // Return user info including type
     return res.status(200).json({
       email: user.email,
       fullName: user.fullName,
+      type: user.type,
     });
   } catch (err) {
     console.error("Login error:", err);
@@ -209,6 +211,7 @@ const createSchema = Joi.object({
     .pattern(/[0-9]/, "digit")
     .pattern(/[\W_]/, "special")
     .required(),
+  type: Joi.string().valid("admin", "employee").required(),
 });
 
 const updateSchema = Joi.object({
@@ -231,7 +234,7 @@ router.post("/create", async (req, res) => {
     const { error } = createSchema.validate(req.body);
     if (error) return res.status(400).json({ error: "Validation failed." });
 
-    const { fullName, email, password } = req.body;
+    const { fullName, email, password, type } = req.body;
 
     // Check duplicate email
     const exists = await User.findOne({ email: email.toLowerCase() });
@@ -244,6 +247,7 @@ router.post("/create", async (req, res) => {
       fullName,
       email: email.toLowerCase(),
       password: hashed,
+      type,
     });
     await user.save();
 
@@ -299,11 +303,8 @@ router.delete("/delete", async (req, res) => {
 // 4) GET /user/getAll
 router.get("/getAll", async (req, res) => {
   try {
-    const users = await User.find(
-      {},
-      "fullName email password imagePath"
-    ).lean();
-    // return users array exactly as required
+    const users = await User.find({}, "fullName email type imagePath").lean();
+    // return users array without passwords
     return res.status(200).json({ users });
   } catch (err) {
     console.error(err);
@@ -427,6 +428,52 @@ router.get("/companyImage", async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Something went wrong." });
+  }
+});
+
+// ============ JOB ROUTES ============
+
+// POST /create/job
+// Create a new job (admin only)
+router.post("/create/job", async (req, res) => {
+  try {
+    const { companyName, jobTitle, description, salary } = req.body;
+
+    // Basic validation
+    if (!companyName || !jobTitle || !description || salary === undefined) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    if (typeof salary !== "number" || salary <= 0) {
+      return res
+        .status(400)
+        .json({ error: "Salary must be a positive number." });
+    }
+
+    const job = new Job({
+      companyName,
+      jobTitle,
+      description,
+      salary,
+    });
+
+    await job.save();
+    return res.status(201).json({ message: "Job created successfully.", job });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to create job." });
+  }
+});
+
+// GET /jobs
+// Fetch all jobs (employee view)
+router.get("/jobs", async (req, res) => {
+  try {
+    const jobs = await Job.find({}).lean();
+    return res.status(200).json({ jobs });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to fetch jobs." });
   }
 });
 
