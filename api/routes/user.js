@@ -1,0 +1,433 @@
+// routes/user.js
+const express = require("express");
+const router = express.Router();
+const bcrypt = require("bcrypt");
+const User = require("../models/User");
+const upload = require("../middleware/upload");
+const Joi = require("joi");
+const path = require("path");
+
+/**
+ * @swagger
+ * tags:
+ *   name: Users
+ *   description: User management and image upload APIs
+ */
+
+/**
+ * @swagger
+ * /user/create:
+ *   post:
+ *     summary: Create a new user
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fullName
+ *               - email
+ *               - password
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *                 example: John Doe
+ *               email:
+ *                 type: string
+ *                 example: john.doe@example.com
+ *               password:
+ *                 type: string
+ *                 example: StrongP@ss1
+ *     responses:
+ *       201:
+ *         description: User created successfully
+ *       400:
+ *         description: Validation failed
+ */
+
+/**
+ * @swagger
+ * /user/edit:
+ *   put:
+ *     summary: Update an existing user
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: john.doe@example.com
+ *               fullName:
+ *                 type: string
+ *                 example: Johnathan Doe
+ *               password:
+ *                 type: string
+ *                 example: NewStr0ng!
+ *     responses:
+ *       200:
+ *         description: User updated successfully
+ *       400:
+ *         description: Validation failed
+ *       404:
+ *         description: User not found
+ */
+
+/**
+ * @swagger
+ * /user/delete:
+ *   delete:
+ *     summary: Delete a user by email
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: john.doe@example.com
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *       404:
+ *         description: User not found
+ */
+
+/**
+ * @swagger
+ * /user/getAll:
+ *   get:
+ *     summary: Retrieve all users
+ *     tags: [Users]
+ *     responses:
+ *       200:
+ *         description: List of all users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       fullName:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       password:
+ *                         type: string
+ */
+
+/**
+ * @swagger
+ * /user/uploadImage:
+ *   post:
+ *     summary: Upload an image for a user
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - image
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: john.doe@example.com
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       201:
+ *         description: Image uploaded successfully
+ *       400:
+ *         description: Invalid file format or image already exists
+ *       404:
+ *         description: User not found
+ */
+
+// POST /user/login
+// Body: { email, password }
+
+// routes/user.js
+router.post("/login", async (req, res) => {
+  console.log("Login request body:", req.body);
+  try {
+    const { email, password } = req.body;
+
+    // Basic validation
+    if (!email || !password) {
+      return res.status(400).json({ error: "Validation failed." });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    // Compare password with bcrypt
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(400).json({ error: "Validation failed." });
+
+    // Return user info
+    return res.status(200).json({
+      email: user.email,
+      fullName: user.fullName,
+    });
+  } catch (err) {
+    console.error("Login error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Validation schemas using Joi
+const createSchema = Joi.object({
+  fullName: Joi.string()
+    .pattern(/^[A-Za-z\s]+$/)
+    .required(),
+  email: Joi.string().email().required(),
+  password: Joi.string()
+    .min(8)
+    .pattern(/[A-Z]/, "uppercase")
+    .pattern(/[a-z]/, "lowercase")
+    .pattern(/[0-9]/, "digit")
+    .pattern(/[\W_]/, "special")
+    .required(),
+});
+
+const updateSchema = Joi.object({
+  email: Joi.string().email().required(),
+  fullName: Joi.string()
+    .pattern(/^[A-Za-z\s]+$/)
+    .optional(),
+  password: Joi.string()
+    .min(8)
+    .pattern(/[A-Z]/)
+    .pattern(/[a-z]/)
+    .pattern(/[0-9]/)
+    .pattern(/[\W_]/)
+    .optional(),
+});
+
+// 1) POST /user/create
+router.post("/create", async (req, res) => {
+  try {
+    const { error } = createSchema.validate(req.body);
+    if (error) return res.status(400).json({ error: "Validation failed." });
+
+    const { fullName, email, password } = req.body;
+
+    // Check duplicate email
+    const exists = await User.findOne({ email: email.toLowerCase() });
+    if (exists) return res.status(400).json({ error: "Validation failed." });
+
+    const saltRounds = 10;
+    const hashed = await bcrypt.hash(password, saltRounds);
+
+    const user = new User({
+      fullName,
+      email: email.toLowerCase(),
+      password: hashed,
+    });
+    await user.save();
+
+    return res.status(201).json({ message: "User created successfully." });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Validation failed." });
+  }
+});
+
+// 2) PUT /user/edit
+// expects JSON body with { email, fullName? , password? }
+router.put("/edit", async (req, res) => {
+  try {
+    const { error } = updateSchema.validate(req.body);
+    if (error) return res.status(400).json({ error: "Validation failed." });
+
+    const { email, fullName, password } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    if (fullName) user.fullName = fullName;
+    if (password) {
+      const saltRounds = 10;
+      user.password = await bcrypt.hash(password, saltRounds);
+    }
+
+    await user.save();
+    return res.status(200).json({ message: "User updated successfully." });
+  } catch (err) {
+    console.error(err);
+    return res.status(400).json({ error: "Validation failed." });
+  }
+});
+
+// 3) DELETE /user/delete
+// expects JSON body { email }
+router.delete("/delete", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(404).json({ error: "User not found." });
+
+    const user = await User.findOneAndDelete({ email: email.toLowerCase() });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    return res.status(200).json({ message: "User deleted successfully." });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "User not found." });
+  }
+});
+
+// 4) GET /user/getAll
+router.get("/getAll", async (req, res) => {
+  try {
+    const users = await User.find(
+      {},
+      "fullName email password imagePath"
+    ).lean();
+    // return users array exactly as required
+    return res.status(200).json({ users });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "An error occurred." });
+  }
+});
+
+// 5) POST /user/uploadImage
+// Form-Data fields: email (string), image (file)
+router.post("/uploadImage", upload.single("image"), async (req, res) => {
+  try {
+    const email = req.body.email;
+    if (!email) {
+      // remove uploaded file if any
+      if (req.file) {
+        const fs = require("fs");
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      if (req.file) {
+        const fs = require("fs");
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // if user already has an imagePath set
+    if (user.imagePath) {
+      if (req.file) {
+        const fs = require("fs");
+        fs.unlinkSync(req.file.path); // remove new uploaded file
+      }
+      return res
+        .status(400)
+        .json({ error: "Image already exists for this user." });
+    }
+
+    // multer's fileFilter prevents invalid mimetypes by rejecting; but multer sets file to undefined when rejected.
+    if (!req.file) {
+      return res.status(400).json({
+        error: "Invalid file format. Only JPEG, PNG, and GIF are allowed.",
+      });
+    }
+
+    // Save relative path e.g. /images/filename.ext
+    const relativePath = path
+      .join("/images", req.file.filename)
+      .replace(/\\/g, "/");
+    user.imagePath = relativePath;
+    await user.save();
+
+    return res.status(201).json({
+      message: "Image uploaded successfully.",
+      filePath: relativePath,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      error: "Invalid file format. Only JPEG, PNG, and GIF are allowed.",
+    });
+  }
+});
+
+const Company = require("../models/Company");
+
+// POST /companyImage
+// Form-Data: companyName (string), image (file)
+router.post("/companyImage", upload.single("image"), async (req, res) => {
+  try {
+    const { companyName } = req.body;
+
+    if (!companyName) {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: "Company name is required." });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        error: "Invalid file format. Only JPEG, PNG, and GIF are allowed.",
+      });
+    }
+
+    // Save relative path
+    const relativePath = path
+      .join("/images", req.file.filename)
+      .replace(/\\/g, "/");
+
+    // Check if company already exists
+    let company = await Company.findOne({ companyName });
+    if (company) {
+      // remove old file
+      if (company.imagePath) fs.unlinkSync(`.${company.imagePath}`);
+      company.imagePath = relativePath;
+    } else {
+      company = new Company({ companyName, imagePath: relativePath });
+    }
+
+    await company.save();
+
+    return res.status(201).json({
+      message: "Company image uploaded successfully.",
+      filePath: relativePath,
+      companyName,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Something went wrong." });
+  }
+});
+
+// GET /companyImage
+// Return all companies with their imagePath
+router.get("/companyImage", async (req, res) => {
+  try {
+    const companies = await Company.find({}, "companyName imagePath").lean();
+    return res.status(200).json({ companies });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Something went wrong." });
+  }
+});
+
+module.exports = router;
