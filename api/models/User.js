@@ -5,6 +5,7 @@ const userSchema = new mongoose.Schema(
     fullName: { type: String, required: true },
     email: { type: String, required: true, unique: true, lowercase: true },
     password: { type: String, required: true }, // hashed by bcrypt
+    type: { type: String, enum: ["admin", "employee"], required: true }, // role type
     imagePath: { type: String }, // e.g. /images/filename.ext
   },
   { timestamps: true }
