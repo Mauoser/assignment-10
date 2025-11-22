@@ -7,31 +7,30 @@ import {
   Typography,
   Card,
   Alert,
+  CircularProgress,
 } from "@mui/material";
-import { useAuth } from "../services/AuthContext";
+import { useDispatch, useSelector } from "react-redux";
+import { login } from "../redux/authSlice";
 import { useNavigate } from "react-router-dom";
 import LoginIcon from "@mui/icons-material/Login";
 
 const Login = () => {
-  const { login } = useAuth();
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { loading, error, user } = useSelector((state) => state.auth);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+
+  // Redirect if already logged in
+  React.useEffect(() => {
+    if (user) {
+      navigate(user.type === "admin" ? "/admin/employees" : "/jobs");
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setErr("");
-    setLoading(true);
-    try {
-      await login(email, password);
-      navigate("/");
-    } catch (error) {
-      setErr(error.response?.data?.error || "Login failed. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    dispatch(login({ email, password }));
   };
 
   return (
@@ -86,9 +85,9 @@ const Login = () => {
               Sign In
             </Typography>
 
-            {err && (
+            {error && (
               <Alert severity="error" sx={{ mb: 2 }}>
-                {err}
+                {error}
               </Alert>
             )}
 
@@ -103,11 +102,7 @@ const Login = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
                 variant="outlined"
-                InputProps={{
-                  sx: {
-                    borderRadius: "8px",
-                  },
-                }}
+                disabled={loading}
               />
               <TextField
                 label="Password"
@@ -119,11 +114,7 @@ const Login = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 variant="outlined"
-                InputProps={{
-                  sx: {
-                    borderRadius: "8px",
-                  },
-                }}
+                disabled={loading}
               />
 
               <Button
@@ -149,7 +140,14 @@ const Login = () => {
                   },
                 }}
               >
-                {loading ? "Signing in..." : "Sign In"}
+                {loading ? (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <CircularProgress size={20} color="inherit" />
+                    Signing in...
+                  </Box>
+                ) : (
+                  "Sign In"
+                )}
               </Button>
             </form>
 
