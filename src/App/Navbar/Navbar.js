@@ -6,25 +6,47 @@ import Toolbar from "@mui/material/Toolbar";
 import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../../services/AuthContext";
+import { useDispatch, useSelector } from "react-redux";
+import { logout } from "../../redux/authSlice";
 import WorkIcon from "@mui/icons-material/Work";
 
 const Navbar = () => {
-  const { user, logout } = useAuth();
+  const dispatch = useDispatch();
   const navigate = useNavigate();
+  const user = useSelector((state) => state.auth.user);
 
   const handleLogout = () => {
-    logout();
+    dispatch(logout());
     navigate("/login");
   };
 
-  const navLinks = [
-    { label: "Home", path: "/" },
-    { label: "Jobs", path: "/jobs" },
-    { label: "Companies", path: "/companies" },
-    { label: "About", path: "/about" },
-    { label: "Contact", path: "/contact" },
-  ];
+  // Navigation links based on user role
+  const getNavLinks = () => {
+    if (!user) {
+      return [
+        { label: "Home", path: "/" },
+        { label: "About", path: "/about" },
+        { label: "Contact", path: "/contact" },
+      ];
+    }
+
+    if (user.type === "admin") {
+      return [
+        { label: "Employees", path: "/admin/employees" },
+        { label: "Add Job", path: "/admin/add-job" },
+      ];
+    }
+
+    return [
+      { label: "Home", path: "/" },
+      { label: "Jobs", path: "/jobs" },
+      { label: "Companies", path: "/companies" },
+      { label: "About", path: "/about" },
+      { label: "Contact", path: "/contact" },
+    ];
+  };
+
+  const navLinks = getNavLinks();
 
   return (
     <Box sx={{ flexGrow: 1 }}>
@@ -91,15 +113,20 @@ const Navbar = () => {
           {/* User Section */}
           {user ? (
             <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-              <Typography
-                sx={{
-                  fontSize: "0.9rem",
-                  fontWeight: 500,
-                  opacity: 0.95,
-                }}
-              >
-                {user.email}
-              </Typography>
+              <Box sx={{ textAlign: "right" }}>
+                <Typography sx={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                  {user.fullName}
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: "0.75rem",
+                    opacity: 0.8,
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {user.type}
+                </Typography>
+              </Box>
               <Button
                 color="inherit"
                 onClick={handleLogout}
